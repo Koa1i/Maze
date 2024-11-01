@@ -1,21 +1,16 @@
 package main;
 
-import java.awt.Font;
-import java.awt.Graphics;
+import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.Stack;
 
-import javax.swing.JMenu;
-import javax.swing.JMenuBar;
-import javax.swing.JMenuItem;
-import javax.swing.JOptionPane;
-import javax.swing.JPanel;
-import javax.swing.UIManager;
+import javax.swing.*;
 import javax.swing.plaf.FontUIResource;
 
 
@@ -29,7 +24,11 @@ public class GamePanel extends JPanel implements ActionListener{
 	private JMenuBar jmb = null;
 	private GameFrame mainFrame = null;
 	private GamePanel panel = null;
-	
+	private List<Block> correctPath = new ArrayList<>(); // 用于存储正确路径
+	private boolean showPath = false; // 控制路径显示的变量
+	private ImageIcon playerIcon;
+	private ImageIcon endIcon;
+
 	public final int ROWS=20;//行
 	public final int COLS=20;//列
 	public final int H=20;//每一块的宽高
@@ -46,6 +45,12 @@ public class GamePanel extends JPanel implements ActionListener{
 		this.setOpaque(false);
 		this.mainFrame=mainFrame;
 		this.panel =this;
+
+		// 加载图标
+		playerIcon = new ImageIcon("imgs/playerIcon.jpg"); // 替换为奶龙图标的路径
+		endIcon = new ImageIcon("imgs/endIcon.png"); // 替换为旗帜图标的路径
+		// chaserIcon = new ImageIcon("imgs/chaserIcon.jpg);
+
 		//创建菜单
 		createMenu();
 		//创建数组内容
@@ -54,6 +59,8 @@ public class GamePanel extends JPanel implements ActionListener{
 		computed();
 		//创建开始结束的方形
 		createRects();
+		//ly:寻找正确路径
+		findPath();
 		//添加键盘事件监听
 		createKeyListener();
 	}
@@ -74,7 +81,7 @@ public class GamePanel extends JPanel implements ActionListener{
 		}
 	}
 	
-	//线路的计算处理
+	//线路的计算处理 DFS
 	private void computed(){
 		/*
 		1.将起点作为当前迷宫单元并标记为已访问
@@ -146,19 +153,89 @@ public class GamePanel extends JPanel implements ActionListener{
 			}
 		}
 	}
+
+	// ly在游戏胜利或求助时显示路径
+	private void showCorrectPath() {
+		repaint(); // 重新绘制面板以显示路径
+	}
+
+	// 重置所有块的访问状态
+	private void resetVisited() {
+		for (int i = 0; i < ROWS; i++) {
+			for (int j = 0; j < COLS; j++) {
+				blocks[i][j].setVisited(false);
+			}
+		}
+	}
+
+	// 添加寻找正确路径的方法
+	private void findPath() {
+		resetVisited();	//重置访问状态
+		correctPath.clear(); // 清空上一次路径
+		Stack<Block> pathStack = new Stack<>();
+		Block startBlock = blocks[0][0]; // 起点
+		Block endBlock = blocks[ROWS - 1][COLS - 1]; // 终点
+
+		// 递归DFS
+		boolean pathFound = dfsPath(startBlock, endBlock, pathStack);
+		if (pathFound) {
+			correctPath.addAll(pathStack); // 将找到的路径存入列表
+		}
+	}
+
+	// 使用DFS查找路径，并考虑墙壁
+	private boolean dfsPath(Block current, Block end, Stack<Block> path) {
+		if (current == end) {
+			path.push(current); // 将终点加入路径
+			return true; // 找到路径
+		}
+
+		current.setVisited(true);
+		path.push(current);
+
+		// 按顺序获取上下左右的邻居
+		Block[] neighbors = {current.getNeighbor(0, true), current.getNeighbor(1, true),
+				current.getNeighbor(2, true), current.getNeighbor(3, true)};
+
+		for (int i = 0; i < neighbors.length; i++) {
+			Block neighbor = neighbors[i];
+			if (neighbor != null && !neighbor.isVisited() && !current.walls[i]) {
+				if (dfsPath(neighbor, end, path)) {
+					return true;
+				}
+			}
+		}
+
+		path.pop(); // 回溯
+		return false;
+	}
+
 	@Override
 	public void paint(Graphics g) {
 		super.paint(g);
-		//绘制网格
+		// 绘制网格、起点和终点
 		drawBlock(g);
-		//绘制开始结束方向
 		drawRect(g);
+
+		// ly 绘制路径，只有当 showPath 为 true 时才绘制
+		if (showPath) {
+			drawPath(g);
+		}
 	}
+
 	//绘制开始结束方块
 	private void drawRect(Graphics g) {
-		end.draw(g);
-		start.draw(g);
+		// 绘制终点图标，稍微向右下偏移
+		if (endIcon != null) {
+			g.drawImage(endIcon.getImage(), end.getJ() * H + 5, end.getI() * H + 5, H, H, this);
+		}
+
+		// 绘制玩家图标，稍微向右下偏移
+		if (playerIcon != null) {
+			g.drawImage(playerIcon.getImage(), start.getJ() * H + 5, start.getI() * H + 5, H, H, this);
+		}
 	}
+
 	//绘制迷宫块
 	private void drawBlock(Graphics g) {
 		Block block ;
@@ -169,6 +246,26 @@ public class GamePanel extends JPanel implements ActionListener{
 					block.draw(g);
 				}
 			}
+		}
+	}
+	// ly绘制路径的方法
+	private void drawPath(Graphics g) {
+		g.setColor(Color.GREEN); // 设置路径线的颜色
+		int offset = 5; // 右移的偏移量
+
+		// 遍历路径中的每个块，连接相邻块的中心
+		for (int i = 0; i < correctPath.size() - 1; i++) {
+			Block currentBlock = correctPath.get(i);
+			Block nextBlock = correctPath.get(i + 1);
+
+			// 当前块和下一个块的中心点坐标
+			int x1 = currentBlock.getJ() * H + H / 2 + offset;
+			int y1 = currentBlock.getI() * H + H / 2 + offset;
+			int x2 = nextBlock.getJ() * H + H / 2 + offset;
+			int y2 = nextBlock.getI() * H + H / 2 + offset;
+
+			// 绘制从当前块中心到下一个块中心的线
+			g.drawLine(x1, y1, x2, y2);
 		}
 	}
 	
@@ -246,29 +343,44 @@ public class GamePanel extends JPanel implements ActionListener{
 		jmi3.setFont(tFont);
 		JMenuItem jmi4 = new JMenuItem("胜利条件");
 		jmi4.setFont(tFont);
-		JMenuItem jmi5 = new JMenuItem("求助作业帮");	// ly1: 实现路径显示
-		//jmi13 jmi4添加到菜单项“游戏”中
+		JCheckBoxMenuItem jmi5 = new JCheckBoxMenuItem("小猿搜题");	// ly: 在右边的钩钩
+		jmi5.setFont(tFont);
+		//jmi3 jmi4 jmi5添加到菜单项“帮助”中
 		jMenu2.add(jmi3);
 		jMenu2.add(jmi4);
-		//jMenu2.add(jmi5);
-		
+		jMenu2.add(jmi5);
 		
 		jmb.add(jMenu1);
 		jmb.add(jMenu2);
 		
 		mainFrame.setJMenuBar(jmb);
-		
-		
-		//添加监听
-		jmi1.addActionListener(this);
-		jmi2.addActionListener(this);
-		jmi3.addActionListener(this);
-		jmi4.addActionListener(this);
+
 		//设置指令
 		jmi1.setActionCommand("restart");
 		jmi2.setActionCommand("exit");
 		jmi3.setActionCommand("help");
 		jmi4.setActionCommand("win");
+		jmi5.setActionCommand("answer");
+
+		//添加监听
+		jmi1.addActionListener(e -> {
+			jmi5.setSelected(false);
+			actionPerformed(e);
+		});
+		jmi2.addActionListener(this);
+		jmi3.addActionListener(this);
+		jmi4.addActionListener(this);
+		jmi5.addActionListener(e -> {
+			if (jmi5.isSelected()) {
+				System.out.println("选中");
+				showPath = true;
+				showCorrectPath(); // 选中时调用 showCorrectPath 方法
+			} else {
+				System.out.println("取消选中");
+				showPath = false; // 取消选择时不再显示路径
+				repaint(); // 重新绘制面板
+			}
+		});
 	}
 
 	@Override
@@ -293,19 +405,17 @@ public class GamePanel extends JPanel implements ActionListener{
 		}else if("win".equals(command)){
 			JOptionPane.showMessageDialog(null, "移动到终点获得胜利",
 					"提示！", JOptionPane.INFORMATION_MESSAGE);
-		}	
+		}else if("answer".equals(command)){	//ly显示路径
+			//findPath();
+			showCorrectPath();
+		}
 	}
 	
 	//重新开始
-	void restart() {
-		/*参数重置
-		1.游戏状态
-		2.迷宫单元重置
-		3.重新计算线路
-		*/
-		
+	void restart() {	// ly按需模式重开
 		//1.游戏状态
 		gameFlag="start";
+		showPath=false;
 		//2.迷宫单元重置
 		Block block ;
 		for (int i = 0; i < ROWS; i++) {
@@ -325,12 +435,15 @@ public class GamePanel extends JPanel implements ActionListener{
 		//开始方块归零
 		start.setI(0);
 		start.setJ(0);
+		//ly
+		findPath();
 		//重绘
 		repaint();
 	}
 	//游戏胜利
 	public void gameWin() {
 		gameFlag = "end";
+		showCorrectPath(); // 显示路径	//ly 新游戏不显示路径
 		//弹出结束提示
 		UIManager.put("OptionPane.buttonFont", new FontUIResource(new Font("思源宋体", Font.PLAIN, 18)));
 		UIManager.put("OptionPane.messageFont", new FontUIResource(new Font("思源宋体", Font.PLAIN, 18)));

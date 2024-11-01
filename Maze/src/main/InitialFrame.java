@@ -13,6 +13,8 @@ public class InitialFrame extends JFrame {
 
     public InitialFrame() {
         setTitle("『迷宫游戏』");
+        ImageIcon titleIcon = new ImageIcon("imgs/endIcon.png");
+        setIconImage(titleIcon.getImage());
         setSize(430, 480);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null); // 居中显示
@@ -150,8 +152,8 @@ public class InitialFrame extends JFrame {
     // 打开对应的 GameFrame 窗口
     private void openGameFrame(String mode) {
         GameFrame gameFrame = new GameFrame(mode);
-        GamePanel panel = new GamePanel(gameFrame);
-        gameFrame.add(panel);
+        //GamePanel gamePanel = new GamePanel(gameFrame);
+        //gameFrame.add(gamePanel);
         gameFrame.setVisible(true);
         this.setVisible(false); // 隐藏当前 InitialFrame
     }

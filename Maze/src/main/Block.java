@@ -1,6 +1,6 @@
 package main;
 
-import java.awt.Graphics;
+import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
 /*
@@ -71,15 +71,19 @@ public class Block {
 		boolean bottom = walls[2];
 		boolean left   = walls[3];
 		if(top){//绘制上墙
+			g.setColor(Color.ORANGE);
 			g.drawLine(x1, y1, x2, y2);
 		}
 		if(right){//绘制右墙
+			g.setColor(Color.ORANGE);
 			g.drawLine(x2, y2, x3, y3);	
 		}
 		if(bottom){//绘制下墙
+			g.setColor(Color.ORANGE);
 			g.drawLine(x3, y3, x4, y4);	
 		}
 		if(left){//绘制左墙
+			g.setColor(Color.ORANGE);
 			g.drawLine(x4, y4, x1, y1);	
 		}
 	}
@@ -126,9 +130,9 @@ public class Block {
 			ti = this.i;
 			tj = this.j-1;
 		}
-		
+
 		Block[][] blocks = panel.blocks;
-		
+
 		if(ti<0 || tj<0 || ti>=panel.ROWS || tj>=panel.COLS){//超出边界了
 			neighbor = null;
 		}else{
@@ -141,7 +145,7 @@ public class Block {
 		}
 		return neighbor;
 	}
-	
+
 	public boolean isVisited() {
 		return visited;
 	}
