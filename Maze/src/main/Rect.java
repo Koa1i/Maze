@@ -3,7 +3,7 @@ package main;
 import java.awt.Color;
 import java.awt.Graphics;
 
-//开始结束方块 Rectangle——玩家控制的对象
+//开始结束方块 Rectangle——玩家控制的对象和终点
 public class Rect {
 	private int i=0;//二维数组的下标i
 	private int j=0;//二维数组的下标j
@@ -11,7 +11,8 @@ public class Rect {
 	private int y=0;//y坐标
 	private int h=0;//宽高
 	private int start=6;//偏移像素
-	private String type="";//start end 
+	private String type="";//start end
+	int curSteps=0;	// 当前步数
 	
 	public Rect(int i,int j,int h,String type){
 		this.i=i;
@@ -29,7 +30,7 @@ public class Rect {
 	void draw(Graphics g){
 		//计算x、y坐标
 		init();
-		
+
 		Color oColor = g.getColor();
 		if("start".equals(type)){
 			g.setColor(Color.blue);
@@ -52,6 +53,7 @@ public class Rect {
 			if(next!=null){
 				this.i = next.getI();
 				this.j = next.getJ();
+				curSteps++;
 				panel.repaint();
 				//判断如果i,j等于终点的，则表示获得成功
 				if(this.i==panel.end.i && this.j==panel.end.j){

@@ -5,15 +5,13 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
-import java.util.ArrayList;
+import java.text.SimpleDateFormat;
+import java.util.*;
 import java.util.List;
-import java.util.Random;
-import java.util.Stack;
 
 import javax.swing.*;
+import javax.swing.Timer;
 import javax.swing.plaf.FontUIResource;
-
-
 
 // ly引入unionfind prim？ kruskal？
 
@@ -28,28 +26,43 @@ public class GamePanel extends JPanel implements ActionListener{
 	private boolean showPath = false; // 控制路径显示的变量
 	private ImageIcon playerIcon;
 	private ImageIcon endIcon;
+	private ImageIcon chaserIcon;
+	private boolean fogOfWar;	// ly：战争迷雾
+	private boolean chasing;
+	private int chaserDist;
 
 	public final int ROWS=20;//行
 	public final int COLS=20;//列
 	public final int H=20;//每一块的宽高
 	Block[][] blocks = null;
-	
+
 	Rect start ;//开始方形
 	Rect end ;//终点方形
-	
-	private String gameFlag="start";//游戏状态
-	
+	Rect chaser;//追逐方形
+
+	private String gameFlag="pause";//游戏状态
+	private Timer timer; // 计时器
+	private int elapsedSeconds; // 经过的秒数
+
+	private JLabel modeDescriptionLabel = new JLabel();
+
 	//构造方法
 	public GamePanel(GameFrame mainFrame){
 		this.setLayout(null);
 		this.setOpaque(false);
 		this.mainFrame=mainFrame;
 		this.panel =this;
+		this.elapsedSeconds=0;
+		this.modeDescriptionLabel=new JLabel(mainFrame.modeDesc);
+
+		// 根据模式判断是否有fog 更新fogOfWar
+		hasFog();
+		// 根据模式判断是否有chaser 更新chasing
+		hasChaser();
 
 		// 加载图标
-		playerIcon = new ImageIcon("imgs/playerIcon.jpg"); // 替换为奶龙图标的路径
-		endIcon = new ImageIcon("imgs/endIcon.png"); // 替换为旗帜图标的路径
-		// chaserIcon = new ImageIcon("imgs/chaserIcon.jpg);
+		playerIcon = new ImageIcon("imgs/playerIcon.jpg");
+		endIcon = new ImageIcon("imgs/endIcon.png");
 
 		//创建菜单
 		createMenu();
@@ -59,16 +72,30 @@ public class GamePanel extends JPanel implements ActionListener{
 		computed();
 		//创建开始结束的方形
 		createRects();
+		//创建追逐者
+		hasChaser();
+		System.out.println(chasing);
+		if (chasing) {
+			chaserIcon = new ImageIcon("imgs/chaserIcon.jpg");
+			createChaser();
+		}
 		//ly:寻找正确路径
 		findPath();
 		//添加键盘事件监听
 		createKeyListener();
 	}
+
+	//ly创建追逐者
+	private void createChaser() {
+		chaser = new Rect(0, 0, H, "chaser");
+	}
+
 	//创建开始结束的方形
 	private void createRects() {
 		start = new Rect(0, 0, H, "start") ;
 		end = new Rect(ROWS-1, COLS-1, H, "end") ;
 	}
+
 	//创建数组内容
 	private void createBlocks() {
 		blocks = new Block[ROWS][COLS];
@@ -80,7 +107,7 @@ public class GamePanel extends JPanel implements ActionListener{
 			}
 		}
 	}
-	
+
 	//线路的计算处理 DFS
 	private void computed(){
 		/*
@@ -99,7 +126,7 @@ public class GamePanel extends JPanel implements ActionListener{
 		Stack<Block> stack = new Stack<Block>();//栈
 		Block current = blocks[0][0];//取第一个为当前单元
 		current.setVisited(true);//标记为已访问
-		
+
 		int unVisitedCount=ROWS*COLS-1;//因为第一个已经设置为访问了，所以要减去1
 		List<Block> neighbors ;//定义邻居
 		Block next;
@@ -107,7 +134,7 @@ public class GamePanel extends JPanel implements ActionListener{
 			neighbors = current.findNeighbors();//查找邻居集合(未被访问的)
 			if(neighbors.size()>0){//如果当前迷宫单元有未被访问过的的相邻的迷宫单元
 				//随机选择一个未访问的相邻迷宫单元
-				int index = random.nextInt(neighbors.size()); 
+				int index = random.nextInt(neighbors.size());
 				next = neighbors.get(index);
 				//将当前迷宫单元入栈
 				stack.push(current);
@@ -128,7 +155,7 @@ public class GamePanel extends JPanel implements ActionListener{
 			}
 		}
 	}
-	
+
 	//移除当前迷宫单元与相邻迷宫单元的墙
 	private void removeWall(Block current, Block next) {
 		if(current.getI()==next.getI()){//横向邻居
@@ -154,9 +181,25 @@ public class GamePanel extends JPanel implements ActionListener{
 		}
 	}
 
+	// 判断是否有追逐者
+	private void hasChaser() {
+		if (Objects.equals(mainFrame.mode, "『迷雾追逐模式』")) {
+			chasing = true;
+			createChaser();
+		} else {
+			chasing = false;
+			chaserDist = -1;
+		}
+	}
+
 	// ly在游戏胜利或求助时显示路径
 	private void showCorrectPath() {
 		repaint(); // 重新绘制面板以显示路径
+	}
+
+	// 重置fogOfWar状态
+	private void hasFog() {
+		fogOfWar =(!Objects.equals(mainFrame.mode, "『普通模式』"));
 	}
 
 	// 重置所有块的访问状态
@@ -210,29 +253,105 @@ public class GamePanel extends JPanel implements ActionListener{
 		return false;
 	}
 
-	@Override
-	public void paint(Graphics g) {
-		super.paint(g);
-		// 绘制网格、起点和终点
-		drawBlock(g);
-		drawRect(g);
-
-		// ly 绘制路径，只有当 showPath 为 true 时才绘制
-		if (showPath) {
-			drawPath(g);
+	// 基于从 start 到 end 的路径计算从 chaser 到 start 的路径
+	private List<Block> calculateChaserToStartPath() {
+		if (chaser == null) {
+			return Collections.emptyList(); // 如果 chaser 为 null，返回一个空列表
 		}
+		Block chaserBlock = blocks[chaser.getI()][chaser.getJ()];
+		Block startBlock = blocks[start.getI()][start.getJ()];
+
+		if (correctPath.isEmpty()) {
+			findPath(); // 先寻找从 start 到 end 的路径
+		}
+
+		List<Block> chaserPath = new ArrayList<>();
+		Set<Block> visited = new HashSet<>(); // 防止重复访问
+		Queue<Block> queue = new LinkedList<>();
+		Map<Block, Block> parentMap = new HashMap<>(); // 存储路径回溯信息
+
+		queue.add(chaserBlock);
+		visited.add(chaserBlock);
+		parentMap.put(chaserBlock, null);
+
+		// 使用 BFS 进行最短路径查找
+		while (!queue.isEmpty()) {
+			Block current = queue.poll();
+
+			// 如果找到 startBlock，就构造路径
+			if (current == startBlock) {
+				Block step = current;
+				while (step != null) {
+					chaserPath.add(0, step); // 从末尾到起点反向加入
+					step = parentMap.get(step);
+				}
+				break;
+			}
+
+			// 访问 correctPath 中的邻居，确保路径方向符合找到的路径
+			int index = correctPath.indexOf(current);
+			if (index != -1 && index + 1 < correctPath.size()) {
+				Block nextStep = correctPath.get(index + 1);
+				if (!visited.contains(nextStep)) {
+					queue.add(nextStep);
+					visited.add(nextStep);
+					parentMap.put(nextStep, current);
+				}
+			}
+		}
+
+		if (chaserPath.isEmpty()) {
+			System.out.println("No path to Start found from Chaser.");
+		}
+
+		return chaserPath;
+	}
+
+
+	// 获取当前时间格式化的方法
+	private String getCurrentTimeFormatted() {
+		int hours = elapsedSeconds / 3600;
+		int minutes = (elapsedSeconds % 3600) / 60;
+		int seconds = elapsedSeconds % 60;
+		return String.format("%02d:%02d:%02d", hours, minutes, seconds);
+	}
+
+	// 游戏开始
+	void startGame() {
+		gameFlag = "start"; // 设置游戏状态为 "start"
+		System.out.println("Game started!"); // 确认进入了该方法
+
+		// 初始化计时器
+		timer = new Timer(1000, new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent e) {
+				elapsedSeconds++; // 每秒递增
+				drawStatus(getGraphics()); // 更新状态面板
+			}
+		});
+		timer.start(); // 启动计时器
+
+		drawStatus(getGraphics()); // 更新状态面板
+		mainFrame.requestFocus(); // 确保主窗口获得焦点，能够接收键盘输入
 	}
 
 	//绘制开始结束方块
 	private void drawRect(Graphics g) {
-		// 绘制终点图标，稍微向右下偏移
+		// 绘制终点图标
 		if (endIcon != null) {
-			g.drawImage(endIcon.getImage(), end.getJ() * H + 5, end.getI() * H + 5, H, H, this);
+			g.drawImage(endIcon.getImage(), end.getJ() * H + 7, end.getI() * H + 7, H-2, H-2, this);
 		}
 
-		// 绘制玩家图标，稍微向右下偏移
+		// 绘制玩家图标
 		if (playerIcon != null) {
-			g.drawImage(playerIcon.getImage(), start.getJ() * H + 5, start.getI() * H + 5, H, H, this);
+			g.drawImage(playerIcon.getImage(), start.getJ() * H + 7, start.getI() * H + 7, H-2, H-2, this);
+		}
+	}
+
+	private void drawChaser(Graphics g) {
+		// 绘制追逐图标
+		if (chasing && mainFrame.mode == "『迷雾追逐模式』" && elapsedSeconds > 5) {
+			g.drawImage(chaserIcon.getImage(), chaser.getJ() * H + 7, chaser.getI() * H + 7, H - 2, H - 2, this);
 		}
 	}
 
@@ -248,7 +367,8 @@ public class GamePanel extends JPanel implements ActionListener{
 			}
 		}
 	}
-	// ly绘制路径的方法
+
+	// ly绘制路径
 	private void drawPath(Graphics g) {
 		g.setColor(Color.GREEN); // 设置路径线的颜色
 		int offset = 5; // 右移的偏移量
@@ -268,14 +388,141 @@ public class GamePanel extends JPanel implements ActionListener{
 			g.drawLine(x1, y1, x2, y2);
 		}
 	}
-	
+
+	// ly绘制迷雾
+	private void drawFog(Graphics g) {
+		int playerX = start.getJ(); // 玩家在网格中的列
+		int playerY = start.getI(); // 玩家在网格中的行
+		int chaserX = 0;
+		int chaserY = 0;
+		if (chaser != null) {
+			chaserX = chaser.getJ();
+			chaserY = chaser.getI();
+		}
+		int endX = end.getJ(); // 终点在网格中的列
+		int endY = end.getI(); // 终点在网格中的行
+
+
+		for (int i = 0; i < ROWS; i++) {
+			for (int j = 0; j < COLS; j++) {
+				// 判断当前块是否在可见区域内
+				boolean isVisible = (Math.abs(i - playerY) < 2 && Math.abs(j - playerX) < 2) || // 玩家周围的 4x4 块
+						(Math.abs(i - chaserY) < 2 && Math.abs(j - chaserX) < 2) ||
+						(Math.abs(i - endY) < 2 && Math.abs(j - endX) < 2); // 终点周围的 4x4 块
+
+				if (!isVisible) {
+					g.setColor(new Color(0, 0, 0, 250)); // 不透明黑色
+					g.fillRect(j * H + 8, i * H + 8, H, H); // 绘制迷雾覆盖
+				}
+			}
+		}
+	}
+
+	// ly右侧状态栏
+	// 绘制状态面板的函数，显示模式及其他状态信息
+	public void drawStatus(Graphics g) {
+		// 更新状态面板的内容，而不是清除它
+		if (mainFrame.statusPane.getComponentCount() == 0) {
+			// 创建开始按钮
+			JButton startButton = new JButton("开始");
+			startButton.setBounds(450, 230, 100, 30);
+			startButton.addActionListener(e -> {
+				System.out.println("Start button clicked!");
+				startGame();
+			});
+			mainFrame.statusPane.add(startButton);
+
+			// 模式标签
+			JLabel modeLabel = new JLabel(mainFrame.mode);
+			modeLabel.setFont(new Font("幼圆", Font.PLAIN, 15));
+			modeLabel.setBounds(450, 15, 130, 40);
+			mainFrame.statusPane.add(modeLabel);
+
+			// 模式描述
+			modeDescriptionLabel.setFont(new Font("幼圆", Font.PLAIN, 12));
+			modeDescriptionLabel.setBounds(450, 60, 300, 40);
+			mainFrame.statusPane.add(modeDescriptionLabel);
+
+			// 当前步数标签
+			JLabel currentStepsLabel = new JLabel("当前步数: " + start.curSteps);
+			currentStepsLabel.setFont(new Font("幼圆", Font.PLAIN, 12));
+			currentStepsLabel.setBounds(450, 105, 200, 40);
+			mainFrame.statusPane.add(currentStepsLabel);
+
+			// 理想步数标签
+			String expSteps = (gameFlag.equals("end") ? String.valueOf(correctPath.size()) : "?");
+			JLabel expectedStepsLabel = new JLabel("理想步数: " + expSteps);
+			expectedStepsLabel.setFont(new Font("幼圆", Font.PLAIN, 12));
+			expectedStepsLabel.setBounds(450, 150, 200, 40);
+			mainFrame.statusPane.add(expectedStepsLabel);
+
+			// 当前用时标签
+			JLabel timeLabel = new JLabel("当前用时: " + getCurrentTimeFormatted());
+			timeLabel.setFont(new Font("幼圆", Font.PLAIN, 12));
+			timeLabel.setBounds(450, 260, 200, 40);
+			mainFrame.statusPane.add(timeLabel);
+
+			// 步数距离标签
+			JLabel distanceLabel = new JLabel();
+			if (chasing && chaser != null && chaserDist >= 0 && mainFrame.mode == "『迷雾追逐模式』") {
+				chaserDist = calculateChaserToStartPath().size() - 1;
+				distanceLabel = new JLabel("距离追逐者: " + chaserDist + " 步");
+				distanceLabel.setFont(new Font("幼圆", Font.PLAIN, 12));
+				distanceLabel.setBounds(450, 190, 200, 40);
+				mainFrame.statusPane.add(distanceLabel);
+			} else if (distanceLabel != null) {
+				mainFrame.statusPane.remove(distanceLabel);
+			}
+		} else {
+			// 更新已有组件的文本
+			((JLabel) mainFrame.statusPane.getComponent(1)).setText(mainFrame.mode);
+			((JLabel) mainFrame.statusPane.getComponent(3)).setText("当前步数: " + start.curSteps);
+			String expSteps = (gameFlag.equals("end") ? String.valueOf(correctPath.size()) : "?");
+			((JLabel) mainFrame.statusPane.getComponent(4)).setText("理想步数: " + expSteps);
+
+			// 更新当前用时标签
+			((JLabel) mainFrame.statusPane.getComponent(5)).setText("当前用时: " + getCurrentTimeFormatted());
+
+			// 更新步数距离标签
+			if (chasing && chaser != null && mainFrame.mode == "『迷雾追逐模式』") {
+				int chaserDist = calculateChaserToStartPath().size() - 1;
+				((JLabel) mainFrame.statusPane.getComponent(6)).setText("距离追逐者: " + chaserDist + " 步");
+			}
+		}
+
+		// 刷新状态面板
+		mainFrame.statusPane.setLayout(null);
+		mainFrame.statusPane.revalidate();
+		mainFrame.statusPane.repaint();
+	}
+
+
+	public void updateModeDescriptionLabel() {
+		modeDescriptionLabel.setText(mainFrame.modeDesc);
+		repaint(); // 可能需要重新绘制面板以更新显示
+	}
+
+	@Override
+	public void paint(Graphics g) {
+		super.paint(g);
+		// 绘制网格、起点和终点
+		drawBlock(g);
+		drawRect(g);
+		drawChaser(g);
+		drawStatus(g);
+
+		if (fogOfWar) drawFog(g);
+		if (showPath) drawPath(g);
+	}
+
 	//添加键盘监听
 	private void createKeyListener() {
 		KeyAdapter l = new KeyAdapter() {
 			//按下
 			@Override
 			public void keyPressed(KeyEvent e) {
-				if(!"start".equals(gameFlag)) return ;
+				if(!"start".equals(gameFlag))
+					return;
 				int key = e.getKeyCode();
 				switch (key) {
 					//向上
@@ -283,32 +530,32 @@ public class GamePanel extends JPanel implements ActionListener{
 					case KeyEvent.VK_W:
 						if(start!=null) start.move(0,blocks,panel);
 						break;
-						
-					//向右	
+
+					//向右
 					case KeyEvent.VK_RIGHT:
 					case KeyEvent.VK_D:
 						if(start!=null) start.move(1,blocks,panel);
 						break;
-						
+
 					//向下
 					case KeyEvent.VK_DOWN:
 					case KeyEvent.VK_S:
 						if(start!=null) start.move(2,blocks,panel);
 						break;
-						
+
 					//向左
 					case KeyEvent.VK_LEFT:
 					case KeyEvent.VK_A:
 						if(start!=null) start.move(3,blocks,panel);
 						break;
 				}
-			
+
 			}
 			//松开
 			@Override
 			public void keyReleased(KeyEvent e) {
 			}
-			
+
 		};
 		//给主frame添加键盘监听
 		mainFrame.addKeyListener(l);
@@ -317,20 +564,20 @@ public class GamePanel extends JPanel implements ActionListener{
 	private Font createFont(){
 		return new Font("思源宋体",Font.BOLD,18);
 	}
-	
+
 	//创建菜单
 	private void createMenu() {
 		//创建JMenuBar
 		jmb = new JMenuBar();			// ly: 路径显示
 		//取得字体
-		Font tFont = createFont(); 
+		Font tFont = createFont();
 		//创建游戏选项
 		JMenu jMenu1 = new JMenu("游戏");
 		jMenu1.setFont(tFont);
 		//创建帮助选项
 		JMenu jMenu2 = new JMenu("帮助");
 		jMenu2.setFont(tFont);
-		
+
 		JMenuItem jmi1 = new JMenuItem("新游戏");
 		jmi1.setFont(tFont);
 		JMenuItem jmi2 = new JMenuItem("退出");
@@ -338,7 +585,7 @@ public class GamePanel extends JPanel implements ActionListener{
 		//jmi1 jmi2添加到菜单项“游戏”中
 		jMenu1.add(jmi1);
 		jMenu1.add(jmi2);
-		
+
 		JMenuItem jmi3 = new JMenuItem("操作帮助");
 		jmi3.setFont(tFont);
 		JMenuItem jmi4 = new JMenuItem("胜利条件");
@@ -349,10 +596,10 @@ public class GamePanel extends JPanel implements ActionListener{
 		jMenu2.add(jmi3);
 		jMenu2.add(jmi4);
 		jMenu2.add(jmi5);
-		
+
 		jmb.add(jMenu1);
 		jmb.add(jMenu2);
-		
+
 		mainFrame.setJMenuBar(jmb);
 
 		//设置指令
@@ -396,9 +643,9 @@ public class GamePanel extends JPanel implements ActionListener{
 					options, options[0]);
 			if (response == 0) {
 				System.exit(0);
-			} 
+			}
 		}else if("restart".equals(command)){
-			restart();
+			mainFrame.restart();
 		}else if("help".equals(command)){
 			JOptionPane.showMessageDialog(null, "通过键盘的上下左右(↑↓←→或WSAD)来移动",
 					"提示！", JOptionPane.INFORMATION_MESSAGE);
@@ -410,45 +657,79 @@ public class GamePanel extends JPanel implements ActionListener{
 			showCorrectPath();
 		}
 	}
-	
+
+	// 重置追逐者状态
+	private void resetChaser() {
+		chasing = false; // 禁用追逐者状态
+		chaser = null;   // 清除追逐者位置
+		chaserIcon = null; // 清除追逐者图标
+		chaserDist = 0;   // 重置步数距离
+	}
+
 	//重新开始
-	void restart() {	// ly按需模式重开
-		//1.游戏状态
-		gameFlag="start";
-		showPath=false;
-		//2.迷宫单元重置
-		Block block ;
+	public void resetGame() {
+		gameFlag = "pause";
+		showPath = false;
+		resetChaser();
+		start.curSteps = 0;
+		elapsedSeconds = 0;
+		if (timer != null) timer.stop();
+		hasFog();
+		System.out.println(mainFrame.mode);
+		hasChaser();
+
+		// 重置每个块的访问状态和墙
 		for (int i = 0; i < ROWS; i++) {
 			for (int j = 0; j < COLS; j++) {
-				block = blocks[i][j];
-				if(block!=null){
-					block.setVisited(false);
-					block.walls[0]=true;
-					block.walls[1]=true;
-					block.walls[2]=true;
-					block.walls[3]=true;
-				}
+				blocks[i][j].setVisited(false);
+				blocks[i][j].walls[0] = true;
+				blocks[i][j].walls[1] = true;
+				blocks[i][j].walls[2] = true;
+				blocks[i][j].walls[3] = true;
 			}
 		}
-		//3.计算处理线路
+
+		// 重新生成迷宫和路径
 		computed();
-		//开始方块归零
 		start.setI(0);
 		start.setJ(0);
-		//ly
 		findPath();
-		//重绘
 		repaint();
+
+		// 更新状态面板
+		drawStatus(getGraphics());
 	}
+
 	//游戏胜利
 	public void gameWin() {
 		gameFlag = "end";
+		showPath = true;
 		showCorrectPath(); // 显示路径	//ly 新游戏不显示路径
+		timer.stop();
 		//弹出结束提示
 		UIManager.put("OptionPane.buttonFont", new FontUIResource(new Font("思源宋体", Font.PLAIN, 18)));
 		UIManager.put("OptionPane.messageFont", new FontUIResource(new Font("思源宋体", Font.PLAIN, 18)));
-	    JOptionPane.showMessageDialog(mainFrame, "你胜利了,太棒了!");		// ly: 如果难度低问用户是否挑战更高难度
+
+		Object[] options = {"是", "否"};
+		int result = JOptionPane.showOptionDialog(
+				mainFrame,
+				"你胜利了,太棒了!\n是否要挑战其他模式？",
+				"胜利",
+				JOptionPane.YES_NO_OPTION,
+				JOptionPane.INFORMATION_MESSAGE,
+				null,
+				options,
+				options[0]
+		);
+		if (result == JOptionPane.YES_OPTION) {
+			System.out.println("用户选择了挑战其他模式！");
+			mainFrame.restart();
+		} else if (result == JOptionPane.NO_OPTION) {
+			System.out.println("用户选择了不挑战其他模式。");
+		}
+
 	}
+
 	//游戏结束
 	public void gameOver() {
 		gameFlag = "end";

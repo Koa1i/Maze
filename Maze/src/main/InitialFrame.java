@@ -100,7 +100,7 @@ public class InitialFrame extends JFrame {
         mode1Button.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseEntered(MouseEvent e) {
-                textLabel.setText("白白净净的迷宫");
+                textLabel.setText("白白净净的迷宫等着你探索！");
             }
 
             @Override
