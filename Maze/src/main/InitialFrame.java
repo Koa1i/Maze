@@ -161,6 +161,7 @@ public class InitialFrame extends JFrame {
     // 自定义 JPanel 用于绘制背景图片
     private class BackgroundPanel extends JPanel {
         private Image bgImg = Toolkit.getDefaultToolkit().getImage("imgs/initialBg.jpeg");
+        private Image startImg = Toolkit.getDefaultToolkit().getImage("imgs/initialStart.png");
         private boolean showStartText = true; // 新增标志位，控制是否显示“开始”
 
         @Override
@@ -169,7 +170,16 @@ public class InitialFrame extends JFrame {
             g.drawImage(bgImg, 0, 0, getWidth(), getHeight(), this);
 
             if (showStartText) { // 仅当标志位为true时显示“开始”
-                drawWord(g, 33, Color.GREEN, "开始", 180, 220);
+                // 计算缩小后的宽度和高度（大约缩小三倍）
+                int newWidth = startImg.getWidth(this) / 3;
+                int newHeight = startImg.getHeight(this) / 3;
+
+                // 计算居中位置
+                int x = (getWidth() - newWidth) / 2;
+                int y = (getHeight() - newHeight) / 2 - 40;
+
+                // 绘制缩小后的图片
+                g.drawImage(startImg, x, y, newWidth, newHeight, this);
             }
         }
 

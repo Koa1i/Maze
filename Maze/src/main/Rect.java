@@ -62,7 +62,15 @@ public class Rect {
 			}
 		}
 	}
-	
+
+	//用于chaser坐标更新
+	public void setPosition(int newI, int newJ) {
+		this.i = newI;
+		this.j = newJ;
+		init(); // 更新 x 和 y 坐标
+	}
+
+
 	public int getI() {
 		return i;
 	}
