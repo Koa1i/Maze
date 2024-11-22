@@ -1,14 +1,12 @@
 package main;
-import java.awt.*;
-import java.util.*;
-import java.util.List;
 
+import java.util.*;
 
 public class KruskalMazeGenerator {
     private int rows;
     private int cols;
     private Block[][] blocks;
-    private List<Edge> edges = new ArrayList<>();
+    private PriorityQueue<Edge> edgeQueue;
     private UnionFind unionFind;
     private GamePanel gamePanel;
 
@@ -18,48 +16,48 @@ public class KruskalMazeGenerator {
         this.gamePanel = panel;
         this.blocks = new Block[rows][cols];
         this.unionFind = new UnionFind(rows * cols);
+        this.edgeQueue = new PriorityQueue<>(Comparator.comparingInt(e -> e.weight)); // 优先队列按权重升序
         initializeBlocksAndEdges();
     }
 
-    // Initialize blocks with walls and edges with weights
+    // 使用墙和带权重的边初始化块
     private void initializeBlocksAndEdges() {
+        Random random = new Random();
         for (int i = 0; i < rows; i++) {
             for (int j = 0; j < cols; j++) {
                 blocks[i][j] = new Block(i, j, 20, gamePanel);
                 // 增加上下左右墙的边缘
-                if (i > 0) edges.add(new Edge(i, j, i - 1, j)); // top
-                if (j > 0) edges.add(new Edge(i, j, i, j - 1)); // left
+                if (i > 0) edgeQueue.add(new Edge(i, j, i - 1, j, random.nextInt(100))); // top
+                if (j > 0) edgeQueue.add(new Edge(i, j, i, j - 1, random.nextInt(100))); // left
             }
         }
-        // Shuffle edges to add randomness
-        Collections.shuffle(edges);
     }
 
     public Block[][] generateMaze() {
-        // Step 1: First, create a path from (0,0) to (ROWS-1, COLS-1)
+        // 步骤1：创建从 (0,0) 到 (rows-1, cols-1) 的唯一路径
         createUniquePath();
 
-        // Step 2: Then run Kruskal's algorithm to remove walls and create a maze with higher complexity
+        // 步骤2：运行基于堆的 Kruskal 算法移除墙壁
         int wallsBroken = 0;
-        int targetWalls = (int) (rows * cols * 2.0 / 3); // Increase wall density
+        int targetWalls = (int) (rows * cols * 2.0 / 2);
 
-        for (Edge edge : edges) {
+        while (!edgeQueue.isEmpty() && wallsBroken < targetWalls) {
+            Edge edge = edgeQueue.poll();
             int cell1 = edge.cell1.getI() * cols + edge.cell1.getJ();
             int cell2 = edge.cell2.getI() * cols + edge.cell2.getJ();
 
             if (unionFind.find(cell1) != unionFind.find(cell2)) {
-                // Connect cells by removing walls
+                // 通过移除墙壁来连接单元
                 removeWalls(edge.cell1, edge.cell2);
                 unionFind.union(cell1, cell2);
                 wallsBroken++;
-                if (wallsBroken >= targetWalls) break; // Stop when sufficient walls are broken
             }
         }
         return blocks;
     }
 
     private void createUniquePath() {
-        // Use DFS or BFS to create a unique path from (0, 0) to (rows - 1, cols - 1)
+        // 使用 DFS 创建从 (0,0) 到 (rows-1, cols-1) 的唯一路径
         Stack<Block> stack = new Stack<>();
         Set<Block> visited = new HashSet<>();
 
@@ -80,7 +78,7 @@ public class KruskalMazeGenerator {
             for (Block neighbor : neighbors) {
                 if (!visited.contains(neighbor)) {
                     stack.push(neighbor);
-                    removeWalls(current, neighbor); // Ensure these blocks are connected
+                    removeWalls(current, neighbor); // 确保连接
                     break;
                 }
             }
@@ -92,31 +90,31 @@ public class KruskalMazeGenerator {
         int dx = cell1.getI() - cell2.getI();
         int dy = cell1.getJ() - cell2.getJ();
 
-        if (dx == 1) { // cell1 is below cell2
-            cell1.walls[0] = false; // remove top wall of cell1
-            cell2.walls[2] = false; // remove bottom wall of cell2
-        } else if (dx == -1) { // cell1 is above cell2
+        if (dx == 1) {
+            cell1.walls[0] = false;
+            cell2.walls[2] = false;
+        } else if (dx == -1) {
             cell1.walls[2] = false;
             cell2.walls[0] = false;
-        } else if (dy == 1) { // cell1 is right of cell2
+        } else if (dy == 1) {
             cell1.walls[3] = false;
             cell2.walls[1] = false;
-        } else if (dy == -1) { // cell1 is left of cell2
+        } else if (dy == -1) {
             cell1.walls[1] = false;
             cell2.walls[3] = false;
         }
     }
 
-    // Edge class to represent edges between cells
+    // 单元格之间的边
     class Edge {
         Block cell1;
         Block cell2;
+        int weight;
 
-        public Edge(int i1, int j1, int i2, int j2) {
+        public Edge(int i1, int j1, int i2, int j2, int weight) {
             this.cell1 = blocks[i1][j1];
             this.cell2 = blocks[i2][j2];
+            this.weight = weight;
         }
     }
 }
-
-

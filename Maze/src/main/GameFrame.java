@@ -13,12 +13,16 @@ public class GameFrame extends JFrame {
 	GamePanel gamePanel;
 	JLayeredPane layeredPane;
 	JLayeredPane statusPane;
+	int width;
+	int height;
+	int mazeSide;
 
-	public GameFrame(String mode) {
+	public GameFrame(String mode, int mazeSize) {
 		this.mode = mode;
+		this.mazeSide = mazeSize;
 		setTitle(mode + "迷宫");
 
-		ImageIcon titleIcon = new ImageIcon("imgs/endIcon.png");
+		ImageIcon titleIcon = new ImageIcon("imgs/titleIcon.png");
 		setIconImage(titleIcon.getImage());
 
 		// 初始化模式和图片映射
@@ -30,21 +34,28 @@ public class GameFrame extends JFrame {
 		backgroundPanel = new BackgroundPanel("imgs/mazeBg" + map.getOrDefault(mode, 0) + ".jpg");
 
 		// 初始化 GamePanel
-		gamePanel = new GamePanel(this);
+		gamePanel = new GamePanel(this, mazeSide);
 
 		describeMode();
 
+		// 获取合适窗口大小
+		Dimension screenSize = Toolkit.getDefaultToolkit().getScreenSize();
+		width = (int)(screenSize.width * 0.8);
+		System.out.println(width);
+		height = (int)(screenSize.height * 0.8);
+		System.out.println(height);
+
 		// 初始化 JLayeredPane
 		layeredPane = new JLayeredPane();
-		layeredPane.setPreferredSize(new Dimension(430, 480));
+		layeredPane.setPreferredSize(new Dimension((int) (width * 0.7), height));
 		statusPane = new JLayeredPane();
-		statusPane.setPreferredSize(new Dimension(170, 480));
+		statusPane.setPreferredSize(new Dimension((int) (width * 0.3), height));
 
 		// 设置面板的位置和大小
-		layeredPane.setBounds(0, 0, 430, 480);
-		statusPane.setBounds(430, 0, 220, 480);
-		backgroundPanel.setBounds(0, 0, 430, 480);
-		gamePanel.setBounds(0, 0, 430, 480);
+		layeredPane.setBounds(0, 0, (int) (width * 0.7), height);
+		statusPane.setBounds((int) (width * 0.7), 0, (int) (width * 0.3), height);
+		backgroundPanel.setBounds(0, 0, (int) (width * 0.7), height);
+		gamePanel.setBounds(0, 0, (int) (width * 0.7), height);
 
 		// 将面板添加到 JLayeredPane
 		layeredPane.add(backgroundPanel, JLayeredPane.DEFAULT_LAYER);
@@ -54,17 +65,22 @@ public class GameFrame extends JFrame {
 		this.add(layeredPane);
 		this.add(statusPane);
 
-		setSize(650, 480);
+
+		setSize(width, height);
 		setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 		setLocationRelativeTo(null);
 		setResizable(false);
 		setVisible(true);
+
+		// 650, 480
 	}
 
-	// 添加一个 restart 方法，避免每次重启都重新创建实例
-	public void restart() {
-		// 1. 获取选择的模式
-		Object[] options = {"『普通模式』", "『迷雾模式』", "『迷雾追逐模式』"};
+	// 添加一个 restart newGame 方法，避免每次重启都重新创建实例
+	public void newGame() {
+		setFont(new Font("幼圆", Font.PLAIN, 18));
+
+		// 1. 弹出选择游戏模式的对话框
+		Object[] options = {"『普通模式』", "『迷雾模式』", "『迷雾追逐模式』", "取消"};
 		int modeChoice = JOptionPane.showOptionDialog(
 				this,
 				"请选择游戏模式：",
@@ -75,17 +91,72 @@ public class GameFrame extends JFrame {
 				options,
 				options[0]
 		);
-		// 2. 设置当前模式
+
+		// 检查用户是否点击了取消
+		if (modeChoice == -1 || modeChoice == 3) {
+			return; // 用户取消操作，直接返回
+		}
+
+		// 设置当前模式
 		this.mode = options[modeChoice].toString();
 		setTitle(this.mode + "迷宫");
 
-		// 更新 `BackgroundPanel` 的背景图片路径
+		// 2. 弹出输入框获取迷宫边长
+		int defaultSize = gamePanel.getMazeSide(); // 获取当前迷宫大小作为默认值
+		String input = (String) JOptionPane.showInputDialog(
+				this,
+				"请输入迷宫大小（边长4-100，默认 " + defaultSize + "）：",
+				"新游戏",
+				JOptionPane.QUESTION_MESSAGE,
+				null,
+				null,
+				defaultSize
+		);
+
+		// 检查用户是否点击取消或输入为空
+		if (input == null) {
+			return;
+		}
+
+		if (input.trim().isEmpty()) {
+			input = String.valueOf(defaultSize); // 使用默认值
+		}
+
+		int mazeSide;
+		try {
+			mazeSide = Integer.parseInt(input.trim());
+
+			if (mazeSide < 4 || mazeSide > 100) {
+				// 如果输入超出合理范围，提示并使用默认值
+				JOptionPane.showMessageDialog(
+						this,
+						"输入值不在合理范围内（4-100），将使用默认值 " + defaultSize,
+						"提示",
+						JOptionPane.WARNING_MESSAGE
+				);
+				mazeSide = defaultSize;
+			}
+			if (mazeSide <= 0) throw new NumberFormatException(); // 确保输入为正数
+		} catch (NumberFormatException ex) {
+			JOptionPane.showMessageDialog(
+					this,
+					"输入无效，请输入一个正整数！",
+					"错误",
+					JOptionPane.ERROR_MESSAGE
+			);
+			return; // 输入无效，直接返回
+		}
+
+		// 3. 更新 `GamePanel` 的迷宫大小并重新生成迷宫
+		gamePanel.setMazeSide(mazeSide);
+
+		// 4. 更新背景面板
 		layeredPane.remove(backgroundPanel); // 移除旧的背景面板
 		backgroundPanel = new BackgroundPanel("imgs/mazeBg" + map.getOrDefault(this.mode, 0) + ".jpg");
-		backgroundPanel.setBounds(0, 0, 430, 480);
+		backgroundPanel.setBounds(0, 0, (int) (width * 0.7), height);
 		layeredPane.add(backgroundPanel, JLayeredPane.DEFAULT_LAYER); // 添加新的背景面板
 
-		// 3. 重置 `GamePanel` 中的状态
+		// 5. 重置 `GamePanel` 状态并开始新游戏
 		gamePanel.resetGame();
 		describeMode();
 
@@ -93,6 +164,7 @@ public class GameFrame extends JFrame {
 		layeredPane.revalidate();
 		layeredPane.repaint();
 	}
+
 
 	private void describeMode() {
 		if (Objects.equals(this.mode, "『普通模式』")) {

@@ -7,9 +7,5 @@ public class Main {
 		// ly:开始界面
 		InitialFrame initial = new InitialFrame();
 		initial.setVisible(true);
-		//GameFrame frame = new GameFrame();
-		//GamePanel panel = new GamePanel(frame);
-		//frame.add(panel);
-		//frame.setVisible(true);
 	}
 }
